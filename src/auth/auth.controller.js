@@ -47,6 +47,7 @@ export const login = async (req, res) => {
             let loggedUser = {
                 uid: user._id,
                 name: user.name,
+                lastName: user.lastName,
                 email: user.email,
                 rol: user.rol
             }
