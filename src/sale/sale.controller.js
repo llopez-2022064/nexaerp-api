@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import { validateAmount, validateFieldIsEmpty } from '../utils/validations.js'
+import { validateAmount, validateNonEmptyFields } from '../utils/validations.js'
 import Sale from '../sale/sale.model.js'
 import Product from '../product/product.model.js'
 import InventoryHistory from '../inventory-history/inventory-history.model.js'
@@ -12,13 +12,16 @@ export const recordSale = async (req, res) => {
     try {
         let data = req.body
 
-        const { valid, field } = validateFieldIsEmpty(data, ['product', 'amount', 'total'])
-        if (!valid) {
+        const { isValid, emptyField } = validateNonEmptyFields(
+            data,
+            ['product', 'amount']
+        )
+        if (!isValid) {
             await session.abortTransaction()
-            return res.status(401).send({ message: `${field} is required` })
+            return res.status(401).send({ message: `${emptyField} is required` })
         }
 
-        let inventory = await Inventory.findOne({ product: data.product })
+        let inventory = await Inventory.findOne({ product: data.product }).session(session)
         if (!inventory) {
             await session.abortTransaction()
             return res.status(404).send({ message: 'An error occurred while searching for the product in the inventory' })
@@ -34,10 +37,10 @@ export const recordSale = async (req, res) => {
             return res.status(409).send({ message: 'Insufficient stock' })
         }
 
-        let product = await Product.findById(data.product)
+        let product = await Product.findOne({ _id: data.product, status: true }).session(session)
         if (!product) {
             await session.abortTransaction()
-            return res.status(404).send({ message: 'Product not found' })
+            return res.status(404).send({ message: 'Product not found or inactive' })
         }
 
         data.total = data.amount * product.sellingPrice
@@ -49,7 +52,7 @@ export const recordSale = async (req, res) => {
         await inventory.save({ session })
 
         let inventoryHistory = new InventoryHistory({
-            movement: `Venta de Producto: ${product.name} - Cantidad: ${sale.amount}`,
+            movement: `Venta: ${product.name} / Marca: ${product.brand}`,
             amount: sale.amount
         })
         await inventoryHistory.save({ session })
@@ -69,6 +72,7 @@ export const recordSale = async (req, res) => {
 export const getSales = async (req, res) => {
     try {
         let sales = await Sale.find()
+            .sort({ createdAt: -1 })
             .populate('product')
 
         return res.status(200).send({ data: sales })

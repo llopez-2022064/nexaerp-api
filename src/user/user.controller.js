@@ -1,16 +1,20 @@
 import User from '../user/user.model.js'
 import { encrypt } from '../utils/encrypt.js'
-import { validateFieldIsEmpty } from '../utils/validations.js'
+import { validateNonEmptyFields } from '../utils/validations.js'
 
 export const updateUser = async (req, res) => {
     try {
         let data = req.body
         let { id } = req.params
 
-        let { valid, field } = validateFieldIsEmpty(data, ['name', 'lastName', 'email', 'password', 'rol'])
-        if (!valid) return res.status(400).send({ message: `${field} is required` })
+        const { isValid, emptyField } = validateNonEmptyFields(
+            data,
+            ['name', 'lastName', 'email', 'password', 'rol'],
+            { allowMissingFields: true }
+        )
+        if (!isValid) return res.status(400).send({ message: `${emptyField} is required` })
 
-        if (data.password) data.password = encrypt(data.password)
+        if (data.password) data.password = await encrypt(data.password)
 
         let user = await User.findByIdAndUpdate(
             { _id: id },
@@ -61,6 +65,8 @@ export const getProfile = async (req, res) => {
 export const getUsers = async (req, res) => {
     try {
         let users = await User.find()
+            .select('-password')
+            .sort({ createdAt: -1})
 
         return res.status(200).send({ data: users })
     } catch (error) {

@@ -3,6 +3,7 @@ import Inventory from '../inventory/inventory.model.js'
 export const getInventory = async (req, res) => {
     try {
         let inventory = await Inventory.find()
+            .sort({ createdAt: -1 })
             .populate('product')
 
         return res.status(200).send({ data: inventory })

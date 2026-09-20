@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import { validateAmount, validateFieldIsEmpty } from '../utils/validations.js'
+import { validateAmount, validateNonEmptyFields } from '../utils/validations.js'
 import Product from './product.model.js'
 import Inventory from '../inventory/inventory.model.js'
 import InventoryHistory from '../inventory-history/inventory-history.model.js'
@@ -9,12 +9,18 @@ export const createProduct = async (req, res) => {
     session.startTransaction()
 
     try {
-        let data = req.body
+        const data = req.body ?? {}
+        const allowedFields = ['name', 'brand', 'sellingPrice']
 
-        const { valid, field } = validateFieldIsEmpty(data, ['name', 'brand', 'sellingPrice', 'status']);
-        if (!valid) {
+        if (Object.keys(data).some((key) => !allowedFields.includes(key))) {
             await session.abortTransaction()
-            return res.status(400).send({ message: `${field} is required` })
+            return res.status(400).send({ message: 'Only name, brand and sellingPrice can be provided' })
+        }
+
+        const { isValid, emptyField } = validateNonEmptyFields(data, allowedFields)
+        if (!isValid) {
+            await session.abortTransaction()
+            return res.status(400).send({ message: `${emptyField} is required` })
         }
 
         if (!validateAmount(data.sellingPrice)) {
@@ -22,7 +28,12 @@ export const createProduct = async (req, res) => {
             return res.status(401).send({ message: 'The quantity must be greater than or equal to zero' })
         }
 
-        let product = new Product(data)
+        let product = new Product({
+            name: data.name,
+            brand: data.brand,
+            sellingPrice: data.sellingPrice,
+            status: true
+        })
         await product.save({ session })
 
         let productInventory = {
@@ -34,7 +45,7 @@ export const createProduct = async (req, res) => {
         await addProductInventory.save({ session })
 
         let inventoryHistory = {
-            movement: `Creación del Producto ${product._id} - ${product.name}`,
+            movement: `Producto creado: ${product.name} / Marca: ${product.brand}`,
             amount: productInventory.amount,
             date: Date.now()
         }
@@ -58,24 +69,40 @@ export const updateProduct = async (req, res) => {
     session.startTransaction()
 
     try {
-        let data = req.body
-        let { id } = req.params
+        const data = req.body ?? {}
+        const { id } = req.params
+        const allowedFields = ['name', 'brand', 'sellingPrice']
 
-        const { valid, field } = validateFieldIsEmpty(data, ['name', 'brand', 'sellingPrice', 'status'])
-        if (!valid) {
+        if (!mongoose.isObjectIdOrHexString(id)) {
             await session.abortTransaction()
-            return res.status(400).send({ message: `${field} is required` })
+            return res.status(400).send({ message: 'Invalid product ID' })
         }
 
-        if (!validateAmount(data.sellingPrice)) {
+        if (Object.keys(data).length === 0 ||
+            Object.keys(data).some((key) => !allowedFields.includes(key))) {
             await session.abortTransaction()
-            return res.status(401).send({ message: 'The quantity must be greater than or equal to zero' })
+            return res.status(400).send({ message: 'Provide only name, brand or sellingPrice to update' })
         }
 
-        let productEdit = await Product.findByIdAndUpdate(
-            { _id: id },
+        const { isValid, emptyField } = validateNonEmptyFields(
             data,
-            { new: true }
+            allowedFields,
+            { allowMissingFields: true }
+        )
+        if (!isValid) {
+            await session.abortTransaction()
+            return res.status(400).send({ message: `${emptyField} is required` })
+        }
+
+        if (Object.hasOwn(data, 'sellingPrice') && !validateAmount(data.sellingPrice)) {
+            await session.abortTransaction()
+            return res.status(400).send({ message: 'The price must be greater than or equal to zero' })
+        }
+
+        let productEdit = await Product.findOneAndUpdate(
+            { _id: id, status: true },
+            { $set: data },
+            { new: true, runValidators: true, session }
         )
         if (!productEdit) {
             await session.abortTransaction()
@@ -83,7 +110,7 @@ export const updateProduct = async (req, res) => {
         }
 
         let inventoryHistoryData = {
-            movement: `Actualización del Producto ${productEdit._id} - ${productEdit.name} `,
+            movement: `Producto actualizado: ${productEdit.name} / Marca: ${productEdit.brand}`,
             amount: 0
         }
 
@@ -108,26 +135,39 @@ export const deleteProduct = async (req, res) => {
     try {
         let { id } = req.params
 
-        if (!id) {
+        if (!mongoose.isObjectIdOrHexString(id)) {
             await session.abortTransaction()
-            return res.status(400).send({ message: 'Product ID is required' })
+            return res.status(400).send({ message: 'Invalid product ID' })
         }
 
-        let productDel = await Product.findByIdAndDelete(id, { session })
+        const inventory = await Inventory.findOne({ product: id }).session(session)
+        if (!inventory) {
+            await session.abortTransaction()
+            return res.status(409).send({ message: 'Product inventory is missing' })
+        }
+
+        if (inventory.amount !== 0) {
+            await session.abortTransaction()
+            return res.status(409).send({ message: 'Cannot deactivate a product with stock' })
+        }
+
+        const productDel = await Product.findOneAndUpdate(
+            { _id: id, status: true },
+            { $set: { status: false } },
+            { new: true, runValidators: true, session }
+        )
         if (!productDel) {
             await session.abortTransaction()
             return res.status(404).send({ message: 'It could not be deleted. Please try again' })
         }
 
         let inventoryHistoryData = {
-            movement: `Eliminación del Producto ${productDel._id} - ${productDel.name} `,
+            movement: `Producto desactivado: ${productDel.name} / Marca: ${productDel.brand}`,
             amount: 0
         }
 
         let inventoryHistory = new InventoryHistory(inventoryHistoryData)
         await inventoryHistory.save({ session })
-
-        await Inventory.deleteOne({ product: id }, { session })
 
         await session.commitTransaction()
 
@@ -143,7 +183,8 @@ export const deleteProduct = async (req, res) => {
 
 export const getProducts = async (req, res) => {
     try {
-        let products = await Product.find()
+        const products = await Product.find({ status: true })
+            .sort({ createdAt: -1, _id: -1 })
 
         return res.status(200).send({ data: products })
     } catch (error) {
@@ -154,7 +195,7 @@ export const getProducts = async (req, res) => {
 
 export const getTotalProducts = async (req, res) => {
     try {
-        let totalProducts = await Product.countDocuments()
+        const totalProducts = await Product.countDocuments({ status: true })
 
         return res.status(200).send({ data: totalProducts })
     } catch (error) {

@@ -3,6 +3,7 @@ import inventoryHistoryModel from "./inventory-history.model.js";
 export const getHistory = async (req, res) => {
     try {
         let history = await inventoryHistoryModel.find()
+            .sort({ createdAt: -1 })
 
         return res.status(200).send({ data: history })
     } catch (error) {

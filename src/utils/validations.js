@@ -7,15 +7,44 @@ export const verifyEmail = (email) => {
     }
 }
 
-export const validateFieldIsEmpty = (data, fields) => {
-    for (let field of fields) {
-        if (data.hasOwnProperty(field)) {
-            if (!data[field] || !data[field].toString().trim()) {
-                return { valid: false, field }
+const isEmptyValue = (value) => {
+    if (value === null || value === undefined) {
+        return true
+    }
+
+    if (typeof value === 'string') {
+        return value.trim() === ''
+    }
+
+    if (Array.isArray(value)) {
+        return value.length === 0
+    }
+
+    return false
+}
+
+export const validateNonEmptyFields = (
+    data,
+    fieldNames,
+    { allowMissingFields = false } = {}
+) => {
+    for (const fieldName of fieldNames) {
+        const fieldExists = Object.hasOwn(data ?? {}, fieldName)
+
+        if (!fieldExists) {
+            if (allowMissingFields) {
+                continue
             }
+
+            return { isValid: false, emptyField: fieldName }
+        }
+
+        if (isEmptyValue(data[fieldName])) {
+            return { isValid: false, emptyField: fieldName }
         }
     }
-    return { valid: true }
+
+    return { isValid: true }
 }
 
 export const validateAmount = (quantity) => {

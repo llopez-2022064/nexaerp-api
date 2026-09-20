@@ -3,7 +3,7 @@ import Product from '../product/product.model.js'
 import Inventory from '../inventory/inventory.model.js'
 import inventoryHistory from '../inventory-history/inventory-history.model.js'
 import mongoose from 'mongoose'
-import { validateAmount, validateFieldIsEmpty } from '../utils/validations.js'
+import { validateAmount, validateNonEmptyFields } from '../utils/validations.js'
 
 export const addShopping = async (req, res) => {
     const session = await mongoose.startSession()
@@ -12,10 +12,13 @@ export const addShopping = async (req, res) => {
     try {
         let data = req.body
 
-        const { valid, field } = validateFieldIsEmpty(data, ['product', 'amount', 'unitCost'])
-        if (!valid) {
+        const { isValid, emptyField } = validateNonEmptyFields(
+            data,
+            ['product', 'amount', 'unitCost']
+        )
+        if (!isValid) {
             await session.abortTransaction()
-            return res.status(401).send({ message: `${field} is required` })
+            return res.status(401).send({ message: `${emptyField} is required` })
         }
 
         if (!validateAmount(data.amount)) {
@@ -28,26 +31,26 @@ export const addShopping = async (req, res) => {
             return res.status(401).send({ message: 'The unit price must be greater than or equal to zero' })
         }
 
-        let product = await Product.findOne({ _id: data.product });
+        let product = await Product.findOne({ _id: data.product, status: true }).session(session)
         if (!product) {
             await session.abortTransaction()
-            return res.status(404).send({ message: 'Product not found' })
+            return res.status(404).send({ message: 'Product not found or inactive' })
         }
 
         let shopping = new Shopping(data)
         await shopping.save({ session })
 
-        let inventory = await Inventory.findOne({ product: data.product })
+        let inventory = await Inventory.findOne({ product: data.product }).session(session)
         if (!inventory) {
             await session.abortTransaction()
             return res.status(404).send({ message: 'Inventory not found' })
         }
 
-        inventory.amount += data.amount
+        inventory.amount += Number(data.amount)
         await inventory.save({ session })
 
         let inventoryHistoryData = {
-            movement: `Compra de producto: ${product.name}, cantidad: ${data.amount}`,
+            movement: `Compra: ${product.name} / Marca: ${product.brand}`,
             amount: data.amount
         }
 
@@ -69,6 +72,7 @@ export const addShopping = async (req, res) => {
 export const getShopping = async (req, res) => {
     try {
         let shopping = await Shopping.find()
+            .sort({ createdAt: -1 })
             .populate('product')
 
         return res.status(200).send({ data: shopping })
