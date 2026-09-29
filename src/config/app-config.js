@@ -13,6 +13,7 @@ import inventoryHistoryRoutes from '../inventory-history/inventory-history.route
 import inventoryRoutes from '../inventory/inventory.routes.js';
 import salesRoutes from '../sale/sale.routes.js'
 import shoppingRoutes from '../shopping/shopping.routes.js'
+import reportsRoutes from '../reports/reports.routes.js'
 
 const app = express()
 const port = process.env.PORT || 3000
@@ -32,6 +33,7 @@ app.use(`${BASE_URL}/inventory`, inventoryRoutes)
 app.use(`${BASE_URL}/inventory/history`, inventoryHistoryRoutes)
 app.use(`${BASE_URL}/sales`, salesRoutes)
 app.use(`${BASE_URL}/shopping`, shoppingRoutes)
+app.use(`${BASE_URL}/reports`, reportsRoutes)
 
 export const startServer = () => {
     app.listen(port, () => {

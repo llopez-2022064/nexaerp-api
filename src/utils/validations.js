@@ -7,6 +7,15 @@ export const verifyEmail = (email) => {
     }
 }
 
+export const verifyDate = (date) => {
+    try {
+        let regex = /^\d{4}-\d{2}-\d{2}$/
+        return regex.test(date)
+    } catch (error) {
+        return false
+    }
+}
+
 const isEmptyValue = (value) => {
     if (value === null || value === undefined) {
         return true
@@ -54,4 +63,19 @@ export const validateAmount = (quantity) => {
     } catch (error) {
         return false
     }
+}
+
+export const formatDate = (isoDate) => {
+    const date = new Date(isoDate)
+
+    if (!isoDate || Number.isNaN(date.getTime())) {
+        return 'Fecha inválida'
+    }
+
+    return date.toLocaleDateString('es-GT', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        timeZone: 'UTC'
+    })
 }
