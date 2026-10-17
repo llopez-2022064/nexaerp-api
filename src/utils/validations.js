@@ -79,3 +79,12 @@ export const formatDate = (isoDate) => {
         timeZone: 'UTC'
     })
 }
+
+export const validatePassword = (password) => {
+    try {
+        let regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9\s]).{10,}$/
+        return regex.test(password)
+    } catch (error) {
+        return false
+    }
+}

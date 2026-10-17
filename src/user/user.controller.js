@@ -1,6 +1,6 @@
 import User from '../user/user.model.js'
 import { encrypt } from '../utils/encrypt.js'
-import { validateNonEmptyFields } from '../utils/validations.js'
+import { validateNonEmptyFields, validatePassword } from '../utils/validations.js'
 
 export const updateUser = async (req, res) => {
     try {
@@ -14,7 +14,10 @@ export const updateUser = async (req, res) => {
         )
         if (!isValid) return res.status(400).send({ message: `${emptyField} is required` })
 
-        if (data.password) data.password = await encrypt(data.password)
+        if (data.password) {
+            if (!validatePassword(data.password)) return res.status(400).send({ message: 'Invalid password format' })
+            data.password = await encrypt(data.password)
+        }
 
         let user = await User.findByIdAndUpdate(
             { _id: id },

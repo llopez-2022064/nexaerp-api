@@ -1,7 +1,7 @@
 import User from '../user/user.model.js'
-import { validatePassword, encrypt } from '../utils/encrypt.js'
+import { encrypt } from '../utils/encrypt.js'
 import { generateToken } from '../utils/generate-token.js'
-import { validateNonEmptyFields, verifyEmail } from '../utils/validations.js'
+import { validateNonEmptyFields, validatePassword, verifyEmail } from '../utils/validations.js'
 
 export const createUser = async (req, res) => {
     try {
@@ -13,6 +13,8 @@ export const createUser = async (req, res) => {
         )
         if (!isValid) return res.status(400).send({ message: `${emptyField} is required` })
 
+        if (!validatePassword(data.password)) return res.status(400).send({ message: 'Invalid password format' })
+        
         if (!verifyEmail(data.email)) return res.status(400).send({ message: 'Invalid email format' })
 
         let isExistsEmail = await User.findOne({ email: data.email })
